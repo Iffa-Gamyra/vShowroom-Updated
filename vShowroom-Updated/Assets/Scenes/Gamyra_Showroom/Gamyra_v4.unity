@@ -3210,9 +3210,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8af3aa0045399a448e57b5a1c2ec0bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  PlayerNav: {fileID: 0}
-  rotation: {fileID: 0}
-  reset: {fileID: 0}
+  rotationSpeed: 0
+  navigationSpeed: 5
+  SlerpSpeed: -1
+  ObjectToRotate: {fileID: 0}
+  originalRot: {x: 0, y: 0, z: 0, w: 0}
+  original: 0
 --- !u!1001 &2115323156
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8088,7 +8091,7 @@ PrefabInstance:
     - target: {fileID: 4945541076512268460, guid: dd59bae0ef4e040d98690c5c883a1a86,
         type: 3}
       propertyPath: m_Enabled
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4945541076512268460, guid: dd59bae0ef4e040d98690c5c883a1a86,
         type: 3}
@@ -8124,6 +8127,7 @@ PrefabInstance:
     m_RemovedComponents:
     - {fileID: 4804910866025048192, guid: dd59bae0ef4e040d98690c5c883a1a86, type: 3}
     - {fileID: 2512325261004055562, guid: dd59bae0ef4e040d98690c5c883a1a86, type: 3}
+    - {fileID: 4945541076512268460, guid: dd59bae0ef4e040d98690c5c883a1a86, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:

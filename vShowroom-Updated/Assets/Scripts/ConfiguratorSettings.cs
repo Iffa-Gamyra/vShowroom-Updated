@@ -4,61 +4,114 @@ using UnityEngine;
 
 public class ConfiguratorSettings : MonoBehaviour
 {
-    //public GameObject CanvasConfig;
-    //public GameObject sliderCanvas;
-    private bool ActivateConfig;
-    public Navigation PlayerNav;
-    public RotateObjects rotation;
-    public OriginalPositionSlerp reset;
+
+    [Header("Rotate Objects")]
+    public int rotationSpeed;
+    private bool rotationEnabled = false;
+
+    [Header("Naviagtion")]
+    public float navigationSpeed = 5.0f;
+    private bool navigationEnabled = true;
+
+    [Header("Original Position Slerp")]
+    public float SlerpSpeed = -1f;
+    public GameObject ObjectToRotate;
+    public Quaternion originalRot;
+    public bool original = false;
+    
+
     // Start is called before the first frame update
     void Start()
     {
-
+        navigationSpeed = 5.0f;
+        if (ObjectToRotate != null)
+        {
+            originalRot = ObjectToRotate.transform.rotation;
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
+        if(rotationEnabled)
+        {
+            if (Input.GetMouseButton(0))
+            {
+                transform.eulerAngles += rotationSpeed * new Vector3(0, -Input.GetAxis("Mouse X"), 0);
+            }
+        }
+
+        if (navigationEnabled)
+        {
+            //Move Forward
+            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))
+            {
+                transform.Translate(Vector3.forward * Time.deltaTime * navigationSpeed);
+            }
+            //Move backwards
+            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow))
+            {
+                transform.Translate(-1 * Vector3.forward * Time.deltaTime * navigationSpeed);
+            }
+            // Rotate Left
+            if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
+            {
+                transform.Rotate(0, -0.5f, 0);
+            }
+            // Rotate right
+            if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
+            {
+                transform.Rotate(0, 0.5f, 0);
+            }
+        }
+
+        if (original == true)
+        {
+            ObjectToRotate.transform.rotation = Quaternion.Slerp(ObjectToRotate.transform.rotation, originalRot, Time.deltaTime * 0.5f);
+
+            if ((Quaternion.Dot(ObjectToRotate.transform.rotation, originalRot) > 0.9999f))
+            {
+                original = false;
+
+            }
+
+        }
 
     }
 
     public void OpenDetailedMode()
     {
-        //Open the Configuration UI
-        //CanvasConfig.SetActive(true);
+
         //Disable player movement 
-        PlayerNav.enabled = false;
+        navigationEnabled = false;
+
         //Enable the bike movement
-        rotation.enabled = true;
+        rotationEnabled = true;
     }
 
     public void CloseDetailedMode()
     {
-        //Close the Configuration UI
-        //CanvasConfig.SetActive(false);
         //Enable player movement 
-        PlayerNav.enabled = true;
-        //Disable the bike movement
-        rotation.enabled = false;
-        //Rotate the bike to the original position
-        reset.original = true;
+        navigationEnabled = true;
 
+        //Disable the bike movement
+        rotationEnabled = false;
+
+        //Rotate the bike to the original position
+        original = true;
 
     }
     public void ChangeDetailedMode()
     {
-        //Close the Configuration UI
-        //CanvasConfig.SetActive(false);
-
         //Disable the bike movement
-        rotation.enabled = false;
+        rotationEnabled = false;
 
         //Rotate the bike to the original position
-        reset.original = true;
-
-
-
-
+        original = true;
     }
 
+    public void OriginalRotation()
+    {
+        original = true;
+    }
 }

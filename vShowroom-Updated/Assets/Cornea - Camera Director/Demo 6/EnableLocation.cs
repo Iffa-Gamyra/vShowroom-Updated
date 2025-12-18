@@ -4,10 +4,7 @@ using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 public class EnableLocation : MonoBehaviour
 {
-   public CorneaCameraDirector Cornea;
-    //public GameObject canvasBike;
-    //public GameObject canvasMannequin;
-    //public GameObject canvasBike02;
+    public CorneaCameraDirector Cornea;
     public ConfiguratorSettings tank;
     public ConfiguratorSettings seat;
     public ConfiguratorSettings badge;
@@ -85,16 +82,9 @@ public class EnableLocation : MonoBehaviour
         //this method starts the method that lerps the camera to the specified index position
         Cornea.Lerp.CameraLerp(1);
 
-        //close all other canvases
-        //canvasMannequin.SetActive(false);
-        //canvasBike02.SetActive(false);
-
         //Open Bike01 Config settings
         tank.OpenDetailedMode();
 
-        //Reset the other Configurators
-        //bike02.ChangeDetailedMode();
-        //mannequin.ChangeDetailedMode();
     }
 
     public void goToPos2()
@@ -102,72 +92,25 @@ public class EnableLocation : MonoBehaviour
         //this method starts the method that lerps the camera to the specified index position
         Cornea.Lerp.CameraLerp(2);
 
-        //close all other canvases
-        //canvasBike.SetActive(false);
-        //canvasMannequin.SetActive(false);
-
         //Open Bike02 Config settings
         seat.OpenDetailedMode();
-
-        //Reset the other Configurators
-        //bike01.ChangeDetailedMode();
-        //mannequin.ChangeDetailedMode();
     }
 
     public void goToPos3()
     {
         //this method starts the method that lerps the camera to the specified index position
         Cornea.Lerp.CameraLerp(3);
-
-        /*
-        //close all other canvases
-        canvasBike.SetActive(false);
-        canvasBike02.SetActive(false);
-
-        //Open Bike02 Config settings
-        //mannequin.OpenDetailedMode();
-
-        //Reset the other Configurators
-        bike02.ChangeDetailedMode();
-        bike01.ChangeDetailedMode();
-        */
     }
 
     public void goToPos4()
     {
         //this method starts the method that lerps the camera to the specified index position
         Cornea.Lerp.CameraLerp(4);
-
-        /*
-        //close all other canvases
-        canvasBike.SetActive(false);
-        canvasBike02.SetActive(false);
-
-        //Open Bike02 Config settings
-        //mannequin.OpenDetailedMode();
-
-        //Reset the other Configurators
-        bike02.ChangeDetailedMode();
-        bike01.ChangeDetailedMode();
-        */
     }
 
     public void goToPos5()
     {
         //this method starts the method that lerps the camera to the specified index position
         Cornea.Lerp.CameraLerp(5);
-
-        /*
-        //close all other canvases
-        canvasBike.SetActive(false);
-        canvasBike02.SetActive(false);
-
-        //Open Bike02 Config settings
-        //mannequin.OpenDetailedMode();
-
-        //Reset the other Configurators
-        bike02.ChangeDetailedMode();
-        bike01.ChangeDetailedMode();
-        */
     }
 }

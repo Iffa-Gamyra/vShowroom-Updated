@@ -841,6 +841,7 @@ PlayerSettings:
   scriptingDefineSymbols:
     Standalone: VLB_URP
     WebGL: VLB_URP
+    Windows Store Apps: VLB_URP
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend: {}
@@ -874,8 +875,8 @@ PlayerSettings:
   editorAssembliesCompatibilityLevel: 1
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: Savic_2022
-  metroPackageVersion: 
+  metroPackageName: Savic2022
+  metroPackageVersion: 1.0.0.0
   metroCertificatePath: 
   metroCertificatePassword: 
   metroCertificateSubject: 
@@ -883,7 +884,7 @@ PlayerSettings:
   metroCertificateNotAfter: 0000000000000000
   metroApplicationDescription: Savic_2022
   wsaImages: {}
-  metroTileShortName: 
+  metroTileShortName: vShowroom
   metroTileShowName: 0
   metroMediumTileShowName: 0
   metroLargeTileShowName: 0

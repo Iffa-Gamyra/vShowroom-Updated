@@ -56,6 +56,8 @@ public class HomeScreen : MonoBehaviour
     private Button alphaButton, deltaButton;
 
     private Dictionary<string, Action> actions;
+    private Dictionary<string, Action> bikeActions;
+    private Dictionary<string, Action> merchActions;
     private readonly Dictionary<string, int> selections = new Dictionary<string, int>();
 
     // Flow state
@@ -83,14 +85,37 @@ public class HomeScreen : MonoBehaviour
     private const string CART_BADGE = "Badge";
     private const string CART_SHIRT = "Shirt";
 
+
     private void Awake()
     {
         videoPlayer = GetComponent<VideoPlayer>();
         if (videoPlayer != null) videoPlayer.Prepare();
 
         BuildActions();
+        BuildBikeActions();
+        BuildMerchActions();
     }
+    void Start()
+    {
+        root = uiDocument.rootVisualElement;
 
+        VisualElement welcomeScreen = root.Q("WelcomeScreen");
+        VisualElement homeScreen = root.Q("HomeScreen");
+
+        WelcomeScreenManager wsManager = new WelcomeScreenManager(welcomeScreen);
+        wsManager.Start = () =>
+        {
+            cameraPosition.goToPosition(1);
+            welcomeScreen.Display(false);
+            homeScreen.Display(true);
+        };
+
+        ColorShirt(0);
+        ChangeColorBody(0);
+        ChangeColorBadge(0);
+        ChangeColorSeat(0);
+        SelectModel("Model A");
+    }
     private void OnEnable()
     {
         if (uiDocument == null) return;
@@ -98,7 +123,9 @@ public class HomeScreen : MonoBehaviour
         // Old behavior: bind against document root
         root = uiDocument.rootVisualElement;
 
-        currentBikeModel ??= modelA;
+        if (currentBikeModel == null)
+            currentBikeModel = modelA;
+
 
         // If nothing loaded yet, assume we're on home
         if (currentTree == null && uiDocument.visualTreeAsset != null)
@@ -156,7 +183,7 @@ public class HomeScreen : MonoBehaviour
         ChangeCameraPosition(1);
         SetTargets(false, false);
         PauseVideo();
-        changeVideoFOV("Normal");
+        ChangeVideoFOV("Normal");
         isFocused = false;
         currentPosition = -1;
 
@@ -164,15 +191,17 @@ public class HomeScreen : MonoBehaviour
     }
 
     // =======================
-    // Actions (IDs unchanged)
+    // Actions (IDs unchanged, but split)
     // =======================
 
     private void BuildActions()
     {
         actions = new Dictionary<string, Action>
         {
-            ["confirm_bike"] = GoHome,
-            ["merch_cart_confirm"] = GoHome,
+            ["home"] = () => { GoHome(); HandleButtonClick("bike"); },
+
+
+
 
             ["video"] = () => { HandleButtonClick("video"); OpenVideo(); },
             ["video_tab"] = () => { HandleButtonClick("video_tab"); OpenVideo(); },
@@ -182,6 +211,13 @@ public class HomeScreen : MonoBehaviour
 
             ["screenshot"] = TakeScreenshot,
 
+
+        };
+    }
+    private void BuildBikeActions()
+    {
+        bikeActions = new Dictionary<string, Action>
+        {
             ["bike"] = () => { HandleButtonClick("bike"); OpenBikeRoot(); },
             ["bike_tab"] = () => { HandleButtonClick("bike_tab"); OpenBikeRoot(); },
 
@@ -200,7 +236,7 @@ public class HomeScreen : MonoBehaviour
             {
                 if (bikeIndex > 0) LoadUXML(bikeSections[--bikeIndex].uxmlAsset);
                 SetTargets(true, false);
-                cameraController?.SetTarget(bikeTarget, true);
+                if (cameraController != null) cameraController.SetTarget(bikeTarget, true);
             },
 
             ["cart_tab"] = () =>
@@ -208,12 +244,35 @@ public class HomeScreen : MonoBehaviour
                 bikeIndex = 2;
                 LoadUXML(bikeSections[2].uxmlAsset);
                 SetTargets(true, false);
-                cameraController?.SetTarget(bikeTarget, true);
-            },
+                if (cameraController != null) cameraController.SetTarget(bikeTarget, true);
 
+            },
             ["reserve"] = () => LoadUXML(bikeSections[3].uxmlAsset),
             ["reserve_tab"] = () => { bikeIndex = 3; LoadUXML(bikeSections[3].uxmlAsset); },
+            ["confirm_bike"] = GoHome,
 
+            ["body_white"] = () => ChangeColorBody(0),
+            ["body_silver"] = () => ChangeColorBody(1),
+            ["body_alumin"] = () => ChangeColorBody(2),
+            ["body_carbon"] = () => ChangeColorBody(3),
+            ["body_black"] = () => ChangeColorBody(4),
+
+            ["badge_silver"] = () => ChangeColorBadge(0),
+            ["badge_black"] = () => ChangeColorBadge(1),
+
+            ["seat_tan"] = () => ChangeColorSeat(0),
+            ["seat_black"] = () => ChangeColorSeat(1),
+
+            ["inspect_body"] = () => { Inspect(3, "body"); SetTargets(false, false); },
+            ["inspect_badge"] = () => { Inspect(5, "badge"); SetTargets(false, false); },
+            ["inspect_seat"] = () => { Inspect(4, "seat"); SetTargets(false, false); },
+        };
+    }
+
+    private void BuildMerchActions()
+    {
+        merchActions = new Dictionary<string, Action>
+        {
             ["merch"] = () => { HandleButtonClick("merch"); OpenMerchRoot(); },
             ["merch_tab"] = () => { HandleButtonClick("merch_tab"); OpenMerchRoot(); },
 
@@ -254,6 +313,8 @@ public class HomeScreen : MonoBehaviour
                     LoadUXML(merchSections[++merchIndex].uxmlAsset);
             },
 
+            ["merch_cart_confirm"] = GoHome,
+
             ["less_Shirt"] = () => { shirtQuantity = Mathf.Max(0, shirtQuantity - 1); UpdateShirtCart(); UpdateShirtLabels(); UpdateTotalLabel(); },
             ["more_Shirt"] = () => { shirtQuantity += 1; UpdateShirtCart(); UpdateShirtLabels(); UpdateTotalLabel(); },
 
@@ -266,27 +327,28 @@ public class HomeScreen : MonoBehaviour
             ["shirt_black"] = () => ColorShirt(1),
             ["shirt_blue"] = () => ColorShirt(2),
 
-            ["body_white"] = () => ChangeColorBody(0),
-            ["body_silver"] = () => ChangeColorBody(1),
-            ["body_alumin"] = () => ChangeColorBody(2),
-            ["body_carbon"] = () => ChangeColorBody(3),
-            ["body_black"] = () => ChangeColorBody(4),
-
-            ["badge_silver"] = () => ChangeColorBadge(0),
-            ["badge_black"] = () => ChangeColorBadge(1),
-
-            ["seat_tan"] = () => ChangeColorSeat(0),
-            ["seat_black"] = () => ChangeColorSeat(1),
-
-            ["inspect_body"] = () => { Inspect(3, "body"); SetTargets(false, false); },
-            ["inspect_badge"] = () => { Inspect(5, "badge"); SetTargets(false, false); },
-            ["inspect_seat"] = () => { Inspect(4, "seat"); SetTargets(false, false); },
         };
     }
 
     private void BindButtons()
     {
         foreach (var kv in actions)
+        {
+            var btn = root.Q<Button>(kv.Key);
+            if (btn == null) continue;
+
+            btn.clicked -= kv.Value;
+            btn.clicked += kv.Value;
+        }
+        foreach (var kv in bikeActions)
+        {
+            var btn = root.Q<Button>(kv.Key);
+            if (btn == null) continue;
+
+            btn.clicked -= kv.Value;
+            btn.clicked += kv.Value;
+        }
+        foreach (var kv in merchActions)
         {
             var btn = root.Q<Button>(kv.Key);
             if (btn == null) continue;
@@ -329,14 +391,14 @@ public class HomeScreen : MonoBehaviour
 
         SelectModel(selectedModel);
         SwitchSpecs(selectedModel);
-
+        RestoreShirtSizeHighlight();
         UpdateShirtLabels();
         UpdateTotalLabel();
     }
 
     private void OpenVideo()
     {
-        changeVideoFOV("Video");
+        ChangeVideoFOV("Video");
         ChangeCameraPosition(7);
         SetTargets(false, false);
         if (videoSection != null) LoadUXML(videoSection.uxmlAsset);
@@ -345,10 +407,10 @@ public class HomeScreen : MonoBehaviour
     private void OpenBikeRoot()
     {
         PauseVideo();
-        changeVideoFOV("Normal");
+        ChangeVideoFOV("Normal");
         ChangeCameraPosition(2);
         SetTargets(true, false);
-        cameraController?.SetTarget(bikeTarget, true);
+        if (cameraController != null) cameraController.SetTarget(bikeTarget, true);
 
         bikeIndex = 0;
         if (bikeSections != null && bikeSections.Length > 0) LoadUXML(bikeSections[0].uxmlAsset);
@@ -357,10 +419,10 @@ public class HomeScreen : MonoBehaviour
     private void OpenMerchRoot()
     {
         PauseVideo();
-        changeVideoFOV("Normal");
+        ChangeVideoFOV("Normal");
         ChangeCameraPosition(6);
         SetTargets(false, true);
-        cameraController?.SetTarget(merchTransform, false);
+        if (cameraController != null) cameraController.SetTarget(merchTransform, false);
 
         merchIndex = 0;
         if (merchSections != null && merchSections.Length > 0) LoadUXML(merchSections[0].uxmlAsset);
@@ -378,8 +440,7 @@ public class HomeScreen : MonoBehaviour
 
         if (modelTypeLabel != null) modelTypeLabel.text = currentBikeModel.modelName;
         if (modelPriceLabel != null) modelPriceLabel.text = $"${currentBikeModel.basePrice:N0}";
-
-        cartStore?.SetItem(CART_MODEL, currentBikeModel.basePrice);
+        if (cartStore != null) cartStore.SetItem(CART_MODEL, currentBikeModel.basePrice);
     }
 
     private void ChangeColorBody(int i)
@@ -388,7 +449,7 @@ public class HomeScreen : MonoBehaviour
         ApplyMaterialByTag("body", opt.material);
         if (bodyColorLabel != null) bodyColorLabel.text = opt.displayName;
         if (bodyColorPriceLabel != null) bodyColorPriceLabel.text = $"${opt.price:N0}";
-        cartStore?.SetItem(CART_BODY, opt.price);
+        if (cartStore != null) cartStore.SetItem(CART_BODY, opt.price);
         HighlightButtons(new[] { "body_white", "body_silver", "body_alumin", "body_carbon", "body_black" }, i, "body");
     }
 
@@ -398,7 +459,7 @@ public class HomeScreen : MonoBehaviour
         ApplyMaterialByTag("seat", opt.material);
         if (seatColorLabel != null) seatColorLabel.text = opt.displayName;
         if (seatPriceLabel != null) seatPriceLabel.text = $"${opt.price:N0}";
-        cartStore?.SetItem(CART_SEAT, opt.price);
+        if(cartStore!=null) cartStore.SetItem(CART_SEAT,opt.price);
         HighlightButtons(new[] { "seat_tan", "seat_black" }, i, "seat");
     }
 
@@ -408,7 +469,7 @@ public class HomeScreen : MonoBehaviour
         ApplyMaterialByTag("badge", opt.material);
         if (badgeColorLabel != null) badgeColorLabel.text = opt.displayName;
         if (badgePriceLabel != null) badgePriceLabel.text = $"${opt.price:N0}";
-        cartStore?.SetItem(CART_BADGE, opt.price);
+        if (cartStore != null) cartStore.SetItem(CART_BADGE, opt.price);
         HighlightButtons(new[] { "badge_silver", "badge_black" }, i, "badge");
     }
 
@@ -493,6 +554,22 @@ public class HomeScreen : MonoBehaviour
         }
     }
 
+    private void RestoreShirtSizeHighlight()
+    {
+        string id = shirtSize switch
+        {
+            "S" => "S_Shirt",
+            "M" => "M_Shirt",
+            "L" => "L_Shirt",
+            "XL" => "XL_Shirt",
+            _ => "M_Shirt"
+        };
+
+        var button = root.Q<Button>(id);
+        if (button != null)
+            HighlightShirtSizeButton(button);
+    }
+
     private void HighlightShirtSizeButton(Button clickedButton)
     {
         var ids = new[] { "S_Shirt", "M_Shirt", "L_Shirt", "XL_Shirt" };
@@ -555,7 +632,7 @@ public class HomeScreen : MonoBehaviour
                 if (btn.name == $"inspect_{part}")
                 {
                     btn.style.unityBackgroundImageTintColor = new StyleColor(new Color(0.9137255f, 0.49411766f, 0f, 1f));
-                    cameraPosition?.goToPosition(pos);
+                    if(cameraPosition != null) cameraPosition.goToPosition(pos);
                     currentPosition = pos;
                 }
                 else btn.style.unityBackgroundImageTintColor = new StyleColor(Color.white);
@@ -566,7 +643,7 @@ public class HomeScreen : MonoBehaviour
             foreach (var btn in inspectButtons)
                 if (btn != null) btn.style.unityBackgroundImageTintColor = new StyleColor(Color.white);
 
-            cameraPosition?.goToPosition(2);
+            if(cameraPosition!=null) cameraPosition.goToPosition(2);
             currentPosition = -1;
         }
     }
@@ -587,13 +664,16 @@ public class HomeScreen : MonoBehaviour
         if (pauseButton != null) pauseButton.style.display = DisplayStyle.None;
     }
 
-    private void changeVideoFOV(string state)
+    private void ChangeVideoFOV(string state)
     {
         if (Camera.main == null) return;
         Camera.main.fieldOfView = (state == "Video") ? video_FOV : normal_FOV;
     }
 
-    private void ChangeCameraPosition(int pos) => cameraPosition?.goToPosition(pos);
+    private void ChangeCameraPosition(int pos)
+    {
+        if (cameraPosition != null) cameraPosition.goToPosition(pos);
+    }
 
     private void SetTargets(bool bikeOn, bool merchOn)
     {
