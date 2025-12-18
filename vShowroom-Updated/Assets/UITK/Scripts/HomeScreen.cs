@@ -89,7 +89,6 @@ public class HomeScreen : MonoBehaviour
     private void Awake()
     {
         videoPlayer = GetComponent<VideoPlayer>();
-        if (videoPlayer != null) videoPlayer.Prepare();
 
         BuildActions();
         BuildBikeActions();
@@ -108,7 +107,12 @@ public class HomeScreen : MonoBehaviour
             cameraPosition.goToPosition(1);
             welcomeScreen.Display(false);
             homeScreen.Display(true);
+
+            if (videoPlayer != null && !videoPlayer.isPrepared) videoPlayer.Prepare();
         };
+
+        if (videoPlayer != null)
+            videoPlayer.prepareCompleted += OnVideoPrepared;
 
         ColorShirt(0);
         ChangeColorBody(0);
@@ -402,6 +406,15 @@ public class HomeScreen : MonoBehaviour
         ChangeCameraPosition(7);
         SetTargets(false, false);
         if (videoSection != null) LoadUXML(videoSection.uxmlAsset);
+        // disable play button until ready
+        if (playButton != null && !videoPlayer.isPrepared)
+            playButton.SetEnabled(false);
+    }
+
+    private void OnVideoPrepared(VideoPlayer source)
+    {
+        if (playButton != null)
+            playButton.SetEnabled(true);
     }
 
     private void OpenBikeRoot()

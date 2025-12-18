@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 public class ScreenshotHandler : MonoBehaviour
 {
     [DllImport("__Internal")]
-    private static extern void DownloadScreenshot(string str);
+    private static extern void VShowroom_DownloadScreenshot(string str);
 
     public static ScreenshotHandler Instance { get; private set; }
 
@@ -42,7 +42,7 @@ public class ScreenshotHandler : MonoBehaviour
         byte[] bytes = texture.EncodeToPNG();
         string base64 = System.Convert.ToBase64String(bytes);
 
-        DownloadScreenshot(base64);
+        VShowroom_DownloadScreenshot(base64);
 
         Destroy(texture);
     }
