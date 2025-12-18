@@ -1,0 +1,644 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+using UnityEngine.UIElements;
+using UnityEngine.Video;
+
+public class HomeScreen : MonoBehaviour
+{
+    [Header("Camera / World")]
+    public CameraController cameraController;
+    public EnableLocation cameraPosition;
+    public DecalController decalController;
+
+    [Header("Targets")]
+    public Transform merchTarget;
+    public Transform bikeTarget;
+    public Transform merchTransform;
+
+    [Header("UI Document")]
+    public UIDocument uiDocument;
+
+    [Header("UI Sections (ScriptableObjects)")]
+    public UISection homeSection;
+    public UISection videoSection;
+    public UISection[] bikeSections;   // 4
+    public UISection[] merchSections;  // 3
+
+    [Header("Bike Models (ScriptableObjects)")]
+    public BikeModel modelA;
+    public BikeModel modelB;
+
+    [Header("Shirt Options (ScriptableObjects)")]
+    public ShirtOption[] shirtOptions; // 3 (white/black/blue order)
+
+    [Header("Cart Store")]
+    public CartStore cartStore;
+
+    [Header("Video")]
+    public float video_FOV;
+    public float normal_FOV;
+
+    // ===== runtime =====
+    private VisualElement root;          // DOC ROOT (old behavior)
+    private VisualTreeAsset currentTree; // currently loaded tree
+
+    private VideoPlayer videoPlayer;
+    private Button playButton, pauseButton;
+    private ProgressBar progressBar;
+
+    private Label totalLabel;
+    private Label modelTypeLabel, modelPriceLabel;
+    private Label bodyColorLabel, bodyColorPriceLabel;
+    private Label badgeColorLabel, badgePriceLabel;
+    private Label seatColorLabel, seatPriceLabel;
+    private Button alphaButton, deltaButton;
+
+    private Dictionary<string, Action> actions;
+    private readonly Dictionary<string, int> selections = new Dictionary<string, int>();
+
+    // Flow state
+    private string currentUI = "";
+    private int bikeIndex = 0;
+    private int merchIndex = 0;
+
+    // Focus state
+    public bool isFocused = false;
+    private int currentPosition = -1;
+
+    // Bike/shirt state
+    private BikeModel currentBikeModel;
+    public string selectedModel = "Model A";
+
+    public int shirtQuantity = 1;
+    private string shirtSize = "M";
+    private string shirtColor = "White";
+    private int selectedShirtIndex = 0;
+
+    // Cart keys
+    private const string CART_MODEL = "Model";
+    private const string CART_BODY = "Body";
+    private const string CART_SEAT = "Seat";
+    private const string CART_BADGE = "Badge";
+    private const string CART_SHIRT = "Shirt";
+
+    private void Awake()
+    {
+        videoPlayer = GetComponent<VideoPlayer>();
+        if (videoPlayer != null) videoPlayer.Prepare();
+
+        BuildActions();
+    }
+
+    private void OnEnable()
+    {
+        if (uiDocument == null) return;
+
+        // Old behavior: bind against document root
+        root = uiDocument.rootVisualElement;
+
+        currentBikeModel ??= modelA;
+
+        // If nothing loaded yet, assume we're on home
+        if (currentTree == null && uiDocument.visualTreeAsset != null)
+            currentTree = uiDocument.visualTreeAsset;
+
+        CacheUI();
+        BindButtons();
+        RestoreState();
+    }
+
+    private void Update()
+    {
+        // progress bar (update even when paused)
+        if (progressBar != null && videoPlayer != null && videoPlayer.length > 0.0001)
+            progressBar.value = (float)(videoPlayer.time / videoPlayer.length) * 100f;
+
+        if (cameraController == null || currentTree == null) return;
+
+        bool isBike0 = IsCurrent(bikeSections, 0);
+        bool isBike1 = IsCurrent(bikeSections, 1);
+        bool isBike2 = IsCurrent(bikeSections, 2);
+        bool isBike3 = IsCurrent(bikeSections, 3);
+        bool isMerch0 = IsCurrent(merchSections, 0);
+
+        if ((isBike0 || isBike1) && !isFocused) cameraController.canRotate = true;
+        else if (isBike1 && isFocused) cameraController.canRotate = false;
+        else if (!isBike1) { cameraController.canRotate = false; isFocused = false; }
+
+        if ((isBike2 || isBike3 || isMerch0) && !isFocused)
+            cameraController.canRotate = true;
+    }
+
+    // =======================
+    // UXML swapping (TRUE old-style rendering)
+    // =======================
+
+    private void LoadUXML(VisualTreeAsset uxml)
+    {
+        if (uxml == null || uiDocument == null) return;
+
+        // CRITICAL: this fixes “rendering wrong” issues
+        uiDocument.visualTreeAsset = uxml;
+
+        // After changing visualTreeAsset, reacquire root
+        root = uiDocument.rootVisualElement;
+        currentTree = uxml;
+
+        CacheUI();
+        BindButtons();
+        RestoreState();
+    }
+
+    private void GoHome()
+    {
+        ChangeCameraPosition(1);
+        SetTargets(false, false);
+        PauseVideo();
+        changeVideoFOV("Normal");
+        isFocused = false;
+        currentPosition = -1;
+
+        if (homeSection != null) LoadUXML(homeSection.uxmlAsset);
+    }
+
+    // =======================
+    // Actions (IDs unchanged)
+    // =======================
+
+    private void BuildActions()
+    {
+        actions = new Dictionary<string, Action>
+        {
+            ["confirm_bike"] = GoHome,
+            ["merch_cart_confirm"] = GoHome,
+
+            ["video"] = () => { HandleButtonClick("video"); OpenVideo(); },
+            ["video_tab"] = () => { HandleButtonClick("video_tab"); OpenVideo(); },
+
+            ["play-button"] = PlayVideo,
+            ["pause-button"] = PauseVideo,
+
+            ["screenshot"] = TakeScreenshot,
+
+            ["bike"] = () => { HandleButtonClick("bike"); OpenBikeRoot(); },
+            ["bike_tab"] = () => { HandleButtonClick("bike_tab"); OpenBikeRoot(); },
+
+            ["alpha"] = () => { currentBikeModel = modelA; SelectModel("Model A"); SwitchSpecs("Model A"); },
+            ["delta"] = () => { currentBikeModel = modelB; SelectModel("Model B"); SwitchSpecs("Model B"); },
+
+            ["Customisation_tab"] = () => { bikeIndex = 1; LoadUXML(bikeSections[1].uxmlAsset); },
+            ["Customisation_tab_delta"] = () => { bikeIndex = 1; LoadUXML(bikeSections[2].uxmlAsset); },
+
+            ["next_bike"] = () =>
+            {
+                if (bikeSections != null && bikeIndex < bikeSections.Length - 1)
+                    LoadUXML(bikeSections[++bikeIndex].uxmlAsset);
+            },
+            ["back_bike"] = () =>
+            {
+                if (bikeIndex > 0) LoadUXML(bikeSections[--bikeIndex].uxmlAsset);
+                SetTargets(true, false);
+                cameraController?.SetTarget(bikeTarget, true);
+            },
+
+            ["cart_tab"] = () =>
+            {
+                bikeIndex = 2;
+                LoadUXML(bikeSections[2].uxmlAsset);
+                SetTargets(true, false);
+                cameraController?.SetTarget(bikeTarget, true);
+            },
+
+            ["reserve"] = () => LoadUXML(bikeSections[3].uxmlAsset),
+            ["reserve_tab"] = () => { bikeIndex = 3; LoadUXML(bikeSections[3].uxmlAsset); },
+
+            ["merch"] = () => { HandleButtonClick("merch"); OpenMerchRoot(); },
+            ["merch_tab"] = () => { HandleButtonClick("merch_tab"); OpenMerchRoot(); },
+
+            ["merch_back"] = () =>
+            {
+                if (merchIndex > 0) LoadUXML(merchSections[--merchIndex].uxmlAsset);
+            },
+
+            ["merch_shipping_details_tab"] = () =>
+            {
+                HandleButtonClick("merch_shipping_details_tab");
+                merchIndex = 1;
+                ChangeCameraPosition(6);
+                LoadUXML(merchSections[1].uxmlAsset);
+            },
+            ["next_merch_shipping"] = () =>
+            {
+                if (merchSections != null && merchIndex < merchSections.Length - 1)
+                    LoadUXML(merchSections[++merchIndex].uxmlAsset);
+            },
+            ["back_shipping_details"] = () =>
+            {
+                HandleButtonClick("back_shipping_details");
+                merchIndex = 1;
+                ChangeCameraPosition(6);
+                LoadUXML(merchSections[1].uxmlAsset);
+            },
+
+            ["cart_merch_tab"] = () =>
+            {
+                HandleButtonClick("cart_merch");
+                merchIndex = 2;
+                LoadUXML(merchSections[2].uxmlAsset);
+            },
+            ["merch_cart"] = () =>
+            {
+                if (merchSections != null && merchIndex < merchSections.Length - 1)
+                    LoadUXML(merchSections[++merchIndex].uxmlAsset);
+            },
+
+            ["less_Shirt"] = () => { shirtQuantity = Mathf.Max(0, shirtQuantity - 1); UpdateShirtCart(); UpdateShirtLabels(); UpdateTotalLabel(); },
+            ["more_Shirt"] = () => { shirtQuantity += 1; UpdateShirtCart(); UpdateShirtLabels(); UpdateTotalLabel(); },
+
+            ["S_Shirt"] = () => ChangeShirtSize("S", root.Q<Button>("S_Shirt")),
+            ["M_Shirt"] = () => ChangeShirtSize("M", root.Q<Button>("M_Shirt")),
+            ["L_Shirt"] = () => ChangeShirtSize("L", root.Q<Button>("L_Shirt")),
+            ["XL_Shirt"] = () => ChangeShirtSize("XL", root.Q<Button>("XL_Shirt")),
+
+            ["shirt_white"] = () => ColorShirt(0),
+            ["shirt_black"] = () => ColorShirt(1),
+            ["shirt_blue"] = () => ColorShirt(2),
+
+            ["body_white"] = () => ChangeColorBody(0),
+            ["body_silver"] = () => ChangeColorBody(1),
+            ["body_alumin"] = () => ChangeColorBody(2),
+            ["body_carbon"] = () => ChangeColorBody(3),
+            ["body_black"] = () => ChangeColorBody(4),
+
+            ["badge_silver"] = () => ChangeColorBadge(0),
+            ["badge_black"] = () => ChangeColorBadge(1),
+
+            ["seat_tan"] = () => ChangeColorSeat(0),
+            ["seat_black"] = () => ChangeColorSeat(1),
+
+            ["inspect_body"] = () => { Inspect(3, "body"); SetTargets(false, false); },
+            ["inspect_badge"] = () => { Inspect(5, "badge"); SetTargets(false, false); },
+            ["inspect_seat"] = () => { Inspect(4, "seat"); SetTargets(false, false); },
+        };
+    }
+
+    private void BindButtons()
+    {
+        foreach (var kv in actions)
+        {
+            var btn = root.Q<Button>(kv.Key);
+            if (btn == null) continue;
+
+            btn.clicked -= kv.Value;
+            btn.clicked += kv.Value;
+        }
+    }
+
+    private void CacheUI()
+    {
+        playButton = root.Q<Button>("play-button");
+        pauseButton = root.Q<Button>("pause-button");
+        progressBar = root.Q<ProgressBar>("progress-bar");
+
+        alphaButton = root.Q<Button>("alpha");
+        deltaButton = root.Q<Button>("delta");
+
+        modelTypeLabel = root.Q<Label>("Model_Type");
+        modelPriceLabel = root.Q<Label>("Model_Price");
+
+        bodyColorLabel = root.Q<Label>("Body_Color");
+        bodyColorPriceLabel = root.Q<Label>("Body_Color_Price");
+
+        badgeColorLabel = root.Q<Label>("Badge_Color");
+        badgePriceLabel = root.Q<Label>("Badge_Price");
+
+        seatColorLabel = root.Q<Label>("Seat_Color");
+        seatPriceLabel = root.Q<Label>("Seat_Price");
+
+        totalLabel = root.Q<Label>("TotalLabel");
+    }
+
+    private void RestoreState()
+    {
+        if (selections.TryGetValue("shirt", out var s)) ColorShirt(s);
+        if (selections.TryGetValue("body", out var b)) ChangeColorBody(b);
+        if (selections.TryGetValue("badge", out var ba)) ChangeColorBadge(ba);
+        if (selections.TryGetValue("seat", out var se)) ChangeColorSeat(se);
+
+        SelectModel(selectedModel);
+        SwitchSpecs(selectedModel);
+
+        UpdateShirtLabels();
+        UpdateTotalLabel();
+    }
+
+    private void OpenVideo()
+    {
+        changeVideoFOV("Video");
+        ChangeCameraPosition(7);
+        SetTargets(false, false);
+        if (videoSection != null) LoadUXML(videoSection.uxmlAsset);
+    }
+
+    private void OpenBikeRoot()
+    {
+        PauseVideo();
+        changeVideoFOV("Normal");
+        ChangeCameraPosition(2);
+        SetTargets(true, false);
+        cameraController?.SetTarget(bikeTarget, true);
+
+        bikeIndex = 0;
+        if (bikeSections != null && bikeSections.Length > 0) LoadUXML(bikeSections[0].uxmlAsset);
+    }
+
+    private void OpenMerchRoot()
+    {
+        PauseVideo();
+        changeVideoFOV("Normal");
+        ChangeCameraPosition(6);
+        SetTargets(false, true);
+        cameraController?.SetTarget(merchTransform, false);
+
+        merchIndex = 0;
+        if (merchSections != null && merchSections.Length > 0) LoadUXML(merchSections[0].uxmlAsset);
+    }
+
+    // =======================
+    // CartStore-driven selections
+    // =======================
+
+    private void SelectModel(string name)
+    {
+        selectedModel = name;
+        currentBikeModel = (name == "Model B") ? modelB : modelA;
+        if (currentBikeModel == null) return;
+
+        if (modelTypeLabel != null) modelTypeLabel.text = currentBikeModel.modelName;
+        if (modelPriceLabel != null) modelPriceLabel.text = $"${currentBikeModel.basePrice:N0}";
+
+        cartStore?.SetItem(CART_MODEL, currentBikeModel.basePrice);
+    }
+
+    private void ChangeColorBody(int i)
+    {
+        var opt = GetOpt(currentBikeModel?.bodyColors, i); if (opt == null) return;
+        ApplyMaterialByTag("body", opt.material);
+        if (bodyColorLabel != null) bodyColorLabel.text = opt.displayName;
+        if (bodyColorPriceLabel != null) bodyColorPriceLabel.text = $"${opt.price:N0}";
+        cartStore?.SetItem(CART_BODY, opt.price);
+        HighlightButtons(new[] { "body_white", "body_silver", "body_alumin", "body_carbon", "body_black" }, i, "body");
+    }
+
+    private void ChangeColorSeat(int i)
+    {
+        var opt = GetOpt(currentBikeModel?.seatColors, i); if (opt == null) return;
+        ApplyMaterialByTag("seat", opt.material);
+        if (seatColorLabel != null) seatColorLabel.text = opt.displayName;
+        if (seatPriceLabel != null) seatPriceLabel.text = $"${opt.price:N0}";
+        cartStore?.SetItem(CART_SEAT, opt.price);
+        HighlightButtons(new[] { "seat_tan", "seat_black" }, i, "seat");
+    }
+
+    private void ChangeColorBadge(int i)
+    {
+        var opt = GetOpt(currentBikeModel?.badgeColors, i); if (opt == null) return;
+        ApplyMaterialByTag("badge", opt.material);
+        if (badgeColorLabel != null) badgeColorLabel.text = opt.displayName;
+        if (badgePriceLabel != null) badgePriceLabel.text = $"${opt.price:N0}";
+        cartStore?.SetItem(CART_BADGE, opt.price);
+        HighlightButtons(new[] { "badge_silver", "badge_black" }, i, "badge");
+    }
+
+    private void ColorShirt(int i)
+    {
+        selectedShirtIndex = i;
+        var opt = (shirtOptions != null && i >= 0 && i < shirtOptions.Length) ? shirtOptions[i] : null;
+        if (opt != null)
+        {
+            shirtColor = opt.colorName;
+            ApplyMaterialByTag("shirt", opt.material);
+        }
+        HighlightButtons(new[] { "shirt_white", "shirt_black", "shirt_blue" }, i, "shirt");
+        UpdateShirtCart();
+    }
+
+    private void UpdateShirtCart()
+    {
+        if (cartStore == null) return;
+
+        var opt = (shirtOptions != null && selectedShirtIndex >= 0 && selectedShirtIndex < shirtOptions.Length) ? shirtOptions[selectedShirtIndex] : null;
+        int unit = opt != null ? opt.price : 50;
+        int total = unit * shirtQuantity;
+
+        if (total <= 0) cartStore.RemoveItem(CART_SHIRT);
+        else cartStore.SetItem(CART_SHIRT, total);
+    }
+
+    private void UpdateTotalLabel()
+    {
+        if (totalLabel == null) return;
+        if (cartStore == null) { totalLabel.text = "$0"; return; }
+        cartStore.RecalculateTotal();
+        totalLabel.text = $"${cartStore.totalPrice:N0}";
+    }
+
+    private void ChangeShirtSize(string size, Button clickedButton)
+    {
+        shirtSize = size;
+        HighlightShirtSizeButton(clickedButton);
+        UpdateShirtLabels();
+    }
+
+    private void UpdateShirtLabels()
+    {
+        foreach (var l in root.Query<Label>("Shirt_Count").ToList()) l.text = shirtQuantity.ToString();
+
+        var opt = (shirtOptions != null && selectedShirtIndex >= 0 && selectedShirtIndex < shirtOptions.Length) ? shirtOptions[selectedShirtIndex] : null;
+        int unit = opt != null ? opt.price : 50;
+
+        foreach (var l in root.Query<Label>("Shirt_price").ToList()) l.text = "$" + (shirtQuantity * unit).ToString("N0");
+        foreach (var l in root.Query<Label>("Shirt_Size").ToList()) l.text = shirtSize;
+        foreach (var l in root.Query<Label>("Shirt_Color").ToList()) l.text = shirtColor;
+    }
+
+    private void SwitchSpecs(string model)
+    {
+        var specsAlpha = root.Q("Specs_Alpha");
+        var specsDelta = root.Q("Specs_Delta");
+        if (alphaButton == null || deltaButton == null) return;
+
+        bool isA = (model == "Model A");
+        if (specsAlpha != null) specsAlpha.style.display = isA ? DisplayStyle.Flex : DisplayStyle.None;
+        if (specsDelta != null) specsDelta.style.display = isA ? DisplayStyle.None : DisplayStyle.Flex;
+
+        SetModelButtonStyle(alphaButton, isA);
+        SetModelButtonStyle(deltaButton, !isA);
+    }
+
+    private void SetModelButtonStyle(Button button, bool isSelected)
+    {
+        if (button == null) return;
+        if (isSelected)
+        {
+            button.style.backgroundColor = new StyleColor(new Color32(146, 242, 225, 255));
+            button.style.color = new StyleColor(Color.black);
+        }
+        else
+        {
+            button.style.backgroundColor = new StyleColor(new Color32(0, 0, 0, 150));
+            button.style.color = new StyleColor(Color.white);
+        }
+    }
+
+    private void HighlightShirtSizeButton(Button clickedButton)
+    {
+        var ids = new[] { "S_Shirt", "M_Shirt", "L_Shirt", "XL_Shirt" };
+        foreach (var id in ids)
+        {
+            var b = root.Q<Button>(id);
+            if (b == null) continue;
+
+            if (b == clickedButton)
+            {
+                b.style.backgroundColor = new StyleColor(Color.white);
+                b.style.color = new StyleColor(Color.black);
+            }
+            else
+            {
+                b.style.backgroundColor = new StyleColor(new Color32(57, 57, 57, 255));
+                b.style.color = new StyleColor(Color.white);
+            }
+        }
+    }
+
+    private void HighlightButtons(string[] buttonIds, int selectedIndex, string group)
+    {
+        Color32 selectedBorderColor = new Color32(0, 190, 250, 255);
+
+        for (int i = 0; i < buttonIds.Length; i++)
+        {
+            var button = root.Q<Button>(buttonIds[i]);
+            if (button == null) continue;
+
+            if (i == selectedIndex)
+            {
+                button.style.borderBottomWidth = 2;
+                button.style.borderBottomColor = new StyleColor(selectedBorderColor);
+            }
+            else button.style.borderBottomWidth = 0;
+        }
+
+        selections[group] = selectedIndex;
+    }
+
+    private void Inspect(int pos, string part)
+    {
+        var inspectButtons = new[]
+        {
+            root.Q<Button>("inspect_body"),
+            root.Q<Button>("inspect_badge"),
+            root.Q<Button>("inspect_seat")
+        };
+
+        if (currentPosition == pos) isFocused = !isFocused;
+        else isFocused = true;
+
+        if (isFocused)
+        {
+            foreach (var btn in inspectButtons)
+            {
+                if (btn == null) continue;
+
+                if (btn.name == $"inspect_{part}")
+                {
+                    btn.style.unityBackgroundImageTintColor = new StyleColor(new Color(0.9137255f, 0.49411766f, 0f, 1f));
+                    cameraPosition?.goToPosition(pos);
+                    currentPosition = pos;
+                }
+                else btn.style.unityBackgroundImageTintColor = new StyleColor(Color.white);
+            }
+        }
+        else
+        {
+            foreach (var btn in inspectButtons)
+                if (btn != null) btn.style.unityBackgroundImageTintColor = new StyleColor(Color.white);
+
+            cameraPosition?.goToPosition(2);
+            currentPosition = -1;
+        }
+    }
+
+    private void PlayVideo()
+    {
+        if (videoPlayer == null) return;
+        videoPlayer.Play();
+        if (playButton != null) playButton.style.display = DisplayStyle.None;
+        if (pauseButton != null) pauseButton.style.display = DisplayStyle.Flex;
+    }
+
+    private void PauseVideo()
+    {
+        if (videoPlayer == null) return;
+        videoPlayer.Pause();
+        if (playButton != null) playButton.style.display = DisplayStyle.Flex;
+        if (pauseButton != null) pauseButton.style.display = DisplayStyle.None;
+    }
+
+    private void changeVideoFOV(string state)
+    {
+        if (Camera.main == null) return;
+        Camera.main.fieldOfView = (state == "Video") ? video_FOV : normal_FOV;
+    }
+
+    private void ChangeCameraPosition(int pos) => cameraPosition?.goToPosition(pos);
+
+    private void SetTargets(bool bikeOn, bool merchOn)
+    {
+        if (bikeTarget) bikeTarget.gameObject.SetActive(bikeOn);
+        if (merchTarget) merchTarget.gameObject.SetActive(merchOn);
+    }
+
+    private void HandleButtonClick(string uiName)
+    {
+        if (currentUI == uiName) return;
+
+        var decalUIList = new HashSet<string> { "bike", "bike_tab", "next_bike" };
+
+        if (decalController != null)
+        {
+            if (decalUIList.Contains(currentUI) && decalController.IsOpaque)
+                decalController.StartFadeOutAndScaleDown();
+
+            if (decalUIList.Contains(uiName) && !decalController.IsOpaque)
+                decalController.StartFadeInAndScaleUp();
+        }
+
+        currentUI = uiName;
+    }
+
+    private void TakeScreenshot()
+    {
+        if (ScreenshotHandler.Instance != null)
+            ScreenshotHandler.Instance.CaptureScreenshot();
+    }
+
+    private bool IsCurrent(UISection[] arr, int i)
+        => arr != null && i >= 0 && i < arr.Length && arr[i] != null && arr[i].uxmlAsset != null
+           && currentTree != null && currentTree.name == arr[i].uxmlAsset.name;
+
+    private static ColorOption GetOpt(ColorOption[] arr, int i)
+        => (arr != null && i >= 0 && i < arr.Length) ? arr[i] : null;
+
+    private static void ApplyMaterialByTag(string tag, Material mat)
+    {
+        if (mat == null) return;
+        var go = GameObject.FindWithTag(tag);
+        if (go == null) return;
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr == null) return;
+        mr.material = mat;
+    }
+}
